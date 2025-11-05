@@ -28,6 +28,7 @@
     "node": ">=14"
   },
   "dependencies": {
+    "dotenv": "^16.4.5",
     "mediasoup": "^3.14.10",
     "mediasoup-client": "^3.6.85",
     "uuid": "^9.0.0",

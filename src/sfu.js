@@ -41,16 +41,6 @@ function createSFUServer(opts = {}) {
       mimeType: "video/VP8",
       clockRate: 90000,
     },
-    {
-      kind: "video",
-      mimeType: "video/H264",
-      clockRate: 90000,
-      parameters: {
-        "level-asymmetry-allowed": 1,
-        "packetization-mode": 1,
-        "profile-level-id": "42e01f",
-      },
-    },
   ];
 
   async function ensureWorkers() {
@@ -114,6 +104,12 @@ function createSFUServer(opts = {}) {
   }) {
     const roomCtx = await getRoomContext(roomName);
     const listenIps = opts.listenIps || getListenIps();
+    console.log("Creating WebRTC transport", {
+      room: roomName,
+      clientId,
+      direction,
+      listenIps,
+    });
     const transport = await roomCtx.router.createWebRtcTransport({
       listenIps,
       enableUdp: opts.enableUdp !== false,

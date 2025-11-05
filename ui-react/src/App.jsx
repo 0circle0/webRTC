@@ -1,62 +1,107 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SFUClient } from "./lib/sfuClient.js";
 
-function useMediaAttach(stream, kind = "video") {
+function useMediaAttach(
+  stream,
+  { kind = "video", muted = false, unmuteAfterAutoplay = false } = {}
+) {
   const ref = useRef(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (stream) {
-      el.srcObject = stream;
-      if (kind === "video") {
-        el.playsInline = true;
-        el.autoplay = true;
-        el.muted = true;
-        el.defaultMuted = true;
-      } else {
+    const attemptPlayback = () => {
+      try {
+        const playPromise = el.play?.();
+        if (playPromise && typeof playPromise.then === "function") {
+          playPromise
+            .then(() => {
+              if (kind === "audio" && unmuteAfterAutoplay) {
+                el.muted = false;
+                el.defaultMuted = false;
+              }
+            })
+            .catch((err) => {
+              console.warn(
+                `Media playback blocked (${kind}): ${err?.message || err}`
+              );
+            });
+        } else if (kind === "audio" && unmuteAfterAutoplay) {
+          el.muted = false;
+          el.defaultMuted = false;
+        }
+      } catch (err) {
+        console.warn(`Media playback error (${kind}): ${err?.message || err}`);
+      }
+    };
+
+    const handleLoaded = () => {
+      if (el.readyState < 2) {
+        attemptPlayback();
+      }
+    };
+
+    const handlePlaying = () => {
+      if (kind === "audio" && unmuteAfterAutoplay) {
         el.muted = false;
         el.defaultMuted = false;
       }
-      el.load?.();
-      const play = () => {
-        const promise = el.play?.();
-        if (promise && typeof promise.catch === "function") {
-          promise.catch(() => {
-            el.controls = true;
-          });
-        }
-      };
-      play();
-      const handleLoaded = () => {
-        if (el.readyState < 2) {
-          play();
-        }
-      };
-      el.addEventListener("loadedmetadata", handleLoaded);
-      el.addEventListener("canplay", handleLoaded);
-      return () => {
-        el.removeEventListener("loadedmetadata", handleLoaded);
-        el.removeEventListener("canplay", handleLoaded);
-      };
-    } else {
+    };
+
+    if (!stream) {
+      el.pause?.();
       el.srcObject = null;
+      return;
     }
-  }, [stream, kind]);
+
+    el.srcObject = stream;
+    if (kind === "video") {
+      el.playsInline = true;
+      el.autoplay = true;
+    }
+
+    let targetMuted = muted;
+    if (kind === "audio" && unmuteAfterAutoplay) {
+      targetMuted = true;
+    }
+    el.muted = targetMuted;
+    el.defaultMuted = targetMuted;
+    el.controls = false;
+
+    el.addEventListener("loadedmetadata", handleLoaded);
+    el.addEventListener("canplay", handleLoaded);
+    if (kind === "audio" && unmuteAfterAutoplay) {
+      el.addEventListener("playing", handlePlaying, { once: true });
+    }
+
+    attemptPlayback();
+
+    return () => {
+      el.removeEventListener("loadedmetadata", handleLoaded);
+      el.removeEventListener("canplay", handleLoaded);
+      if (kind === "audio" && unmuteAfterAutoplay) {
+        el.removeEventListener("playing", handlePlaying);
+      }
+    };
+  }, [stream, kind, muted, unmuteAfterAutoplay]);
   return ref;
 }
 
-function VideoTile({ stream, label }) {
-  const ref = useMediaAttach(stream, "video");
+function VideoTile({ stream, label, muted = false }) {
+  const ref = useMediaAttach(stream, { kind: "video", muted });
   return (
     <div className="video-tile">
-      <video ref={ref} playsInline autoPlay muted />
+      <video ref={ref} playsInline autoPlay muted={muted} />
       <div className="video-label">{label}</div>
     </div>
   );
 }
 
 function AudioSink({ stream }) {
-  const ref = useMediaAttach(stream, "audio");
+  const ref = useMediaAttach(stream, {
+    kind: "audio",
+    muted: false,
+    unmuteAfterAutoplay: true,
+  });
   return <audio ref={ref} autoPlay />;
 }
 
@@ -80,6 +125,8 @@ export default function App() {
   const [joining, setJoining] = useState(false);
   const [localStream, setLocalStream] = useState(null);
   const [remoteMedia, setRemoteMedia] = useState([]);
+  const [videoDevices, setVideoDevices] = useState([]);
+  const [selectedVideoDevice, setSelectedVideoDevice] = useState("");
 
   const appendLog = useCallback((message) => {
     setLogs((prev) => {
@@ -123,10 +170,28 @@ export default function App() {
         prev.filter((item) => item.ownerId && item.ownerId !== clientId)
       );
     };
+    const handleDevices = (event) => {
+      const { videoInputs = [], currentVideoDeviceId } = event.detail || {};
+      setVideoDevices(videoInputs);
+      setSelectedVideoDevice((prev) => {
+        if (
+          currentVideoDeviceId &&
+          videoInputs.some((device) => device.deviceId === currentVideoDeviceId)
+        ) {
+          return currentVideoDeviceId;
+        }
+        if (prev && videoInputs.some((device) => device.deviceId === prev)) {
+          return prev;
+        }
+        return videoInputs[0]?.deviceId || "";
+      });
+    };
     const handleError = (event) => appendLog(`[error] ${event.detail}`);
     const handleDisconnected = () => {
       setStatus("Disconnected");
       setRemoteMedia([]);
+      setVideoDevices([]);
+      setSelectedVideoDevice("");
     };
 
     client.addEventListener("log", handleLog);
@@ -136,6 +201,7 @@ export default function App() {
     client.addEventListener("remote-track", handleRemoteTrack);
     client.addEventListener("remote-track-removed", handleRemoteRemoved);
     client.addEventListener("member-left", handleMemberLeftEvent);
+    client.addEventListener("devices", handleDevices);
     client.addEventListener("error", handleError);
     client.addEventListener("disconnected", handleDisconnected);
 
@@ -147,6 +213,7 @@ export default function App() {
       client.removeEventListener("remote-track", handleRemoteTrack);
       client.removeEventListener("remote-track-removed", handleRemoteRemoved);
       client.removeEventListener("member-left", handleMemberLeftEvent);
+      client.removeEventListener("devices", handleDevices);
       client.removeEventListener("error", handleError);
       client.removeEventListener("disconnected", handleDisconnected);
     };
@@ -158,6 +225,27 @@ export default function App() {
     };
   }, [client]);
 
+  const handleCameraChange = async (event) => {
+    const deviceId = event.target.value;
+    if (!deviceId) return;
+    const previous = selectedVideoDevice;
+    setSelectedVideoDevice(deviceId);
+    try {
+      await client.setVideoInput(deviceId);
+    } catch (err) {
+      setSelectedVideoDevice(previous);
+      appendLog(`[camera] ${err.message}`);
+    }
+  };
+
+  const handleRefreshCameras = async () => {
+    try {
+      await client.refreshDevices();
+    } catch (err) {
+      appendLog(`[camera] refresh failed: ${err.message}`);
+    }
+  };
+
   const handleJoin = async (event) => {
     event.preventDefault();
     if (joining) return;
@@ -168,6 +256,7 @@ export default function App() {
         room: room.trim(),
         token: token.trim() || null,
       });
+      await client.refreshDevices();
     } catch (err) {
       appendLog(`[join failed] ${err.message}`);
       setStatus("Disconnected");
@@ -181,6 +270,8 @@ export default function App() {
     setStatus("Disconnected");
     setRemoteMedia([]);
     setLocalStream(null);
+    setVideoDevices([]);
+    setSelectedVideoDevice("");
   };
 
   return (
@@ -232,10 +323,37 @@ export default function App() {
       <section className="panel">
         <h2>Local Video</h2>
         {localStream ? (
-          <VideoTile stream={localStream} label="Local" />
+          <VideoTile stream={localStream} label="Local" muted />
         ) : (
           <div className="placeholder">Not sharing</div>
         )}
+        <div className="device-row">
+          <label>
+            Camera
+            <select
+              value={selectedVideoDevice}
+              onChange={handleCameraChange}
+              disabled={!videoDevices.length}
+            >
+              {videoDevices.length === 0 ? (
+                <option value="">No cameras detected</option>
+              ) : (
+                videoDevices.map((device) => (
+                  <option key={device.deviceId} value={device.deviceId}>
+                    {device.label}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={handleRefreshCameras}
+            disabled={joining}
+          >
+            Refresh
+          </button>
+        </div>
       </section>
 
       <section className="panel">
@@ -251,6 +369,7 @@ export default function App() {
                 key={item.consumerId}
                 stream={item.stream}
                 label={`Remote ${item.consumerId.slice(0, 6)}`}
+                muted={false}
               />
             ))}
         </div>

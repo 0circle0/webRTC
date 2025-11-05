@@ -21,6 +21,7 @@ export class SFUClient extends EventTarget {
       ws: null,
       id: null,
       localStream: null,
+      currentVideoDeviceId: null,
       device: null,
       deviceLoaded: false,
       sendTransport: null,
@@ -35,7 +36,19 @@ export class SFUClient extends EventTarget {
       subscribedProducers: new Set(),
       pendingRemoteProducers: [],
       producerOwners: new Map(),
+      videoInputs: [],
     };
+
+    if (
+      typeof navigator !== "undefined" &&
+      navigator.mediaDevices &&
+      typeof navigator.mediaDevices.addEventListener === "function"
+    ) {
+      navigator.mediaDevices.addEventListener(
+        "devicechange",
+        this.#handleDeviceChange
+      );
+    }
   }
 
   log(message) {
@@ -72,10 +85,8 @@ export class SFUClient extends EventTarget {
 
     ws.addEventListener("open", async () => {
       try {
-        const stream = await this.#startLocalMedia();
-        this.dispatchEvent(
-          new CustomEvent("local-stream", { detail: { stream } })
-        );
+        await this.#startLocalMedia();
+        this.#emitLocalStreamUpdate();
       } catch (err) {
         this.log(`Local media failed: ${err.message}`);
         this.dispatchEvent(
@@ -137,6 +148,16 @@ export class SFUClient extends EventTarget {
       audio: true,
     });
     this.state.localStream = stream;
+    const videoTrack = stream.getVideoTracks()[0] || null;
+    const settings =
+      videoTrack && videoTrack.getSettings ? videoTrack.getSettings() : null;
+    if (settings && settings.deviceId) {
+      this.state.currentVideoDeviceId = settings.deviceId;
+    }
+    this.state.videoInputs = [];
+    await this.refreshDevices().catch((err) => {
+      this.log(`Failed to enumerate devices: ${err.message}`);
+    });
     this.log("Local media captured");
     return stream;
   }
@@ -147,6 +168,50 @@ export class SFUClient extends EventTarget {
       return;
     }
     this.state.ws.send(JSON.stringify(message));
+  }
+
+  async refreshDevices() {
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.enumerateDevices !== "function"
+    ) {
+      return { videoInputs: [] };
+    }
+    return this.#refreshDeviceLists();
+  }
+
+  async #refreshDeviceLists() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = devices
+        .filter((device) => device.kind === "videoinput")
+        .map((device, index) => ({
+          deviceId: device.deviceId,
+          label: device.label || `Camera ${index + 1}`,
+        }));
+      this.state.videoInputs = videoInputs;
+      if (
+        this.state.currentVideoDeviceId &&
+        !videoInputs.some((d) => d.deviceId === this.state.currentVideoDeviceId)
+      ) {
+        this.state.currentVideoDeviceId = videoInputs[0]?.deviceId || null;
+      } else if (!this.state.currentVideoDeviceId && videoInputs.length) {
+        this.state.currentVideoDeviceId = videoInputs[0].deviceId;
+      }
+      this.dispatchEvent(
+        new CustomEvent("devices", {
+          detail: {
+            videoInputs,
+            currentVideoDeviceId: this.state.currentVideoDeviceId,
+          },
+        })
+      );
+      return { videoInputs };
+    } catch (err) {
+      this.log(`enumerateDevices failed: ${err.message}`);
+      return { videoInputs: [] };
+    }
   }
 
   async #requestTransport(direction) {
@@ -306,6 +371,119 @@ export class SFUClient extends EventTarget {
     }
   }
 
+  #getLocalVideoProducer() {
+    for (const [trackId, producer] of this.state.localProducers.entries()) {
+      if (producer.kind === "video") {
+        return { trackId, producer };
+      }
+    }
+    return null;
+  }
+
+  #emitLocalStreamUpdate() {
+    if (!this.state.localStream) return;
+    const clone = new MediaStream();
+    for (const track of this.state.localStream.getTracks()) {
+      clone.addTrack(track);
+    }
+    this.dispatchEvent(
+      new CustomEvent("local-stream", { detail: { stream: clone } })
+    );
+  }
+
+  async setVideoInput(deviceId) {
+    if (!deviceId) throw new Error("deviceId is required");
+    if (deviceId === this.state.currentVideoDeviceId) return;
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getUserMedia !== "function"
+    ) {
+      throw new Error("Media devices API is unavailable");
+    }
+
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: deviceId } },
+        audio: false,
+      });
+    } catch (err) {
+      this.log(`Failed to access camera ${deviceId}: ${err.message}`);
+      throw err;
+    }
+
+    try {
+      const newTrack = stream.getVideoTracks()[0] || null;
+      if (!newTrack) throw new Error("Selected camera returned no video");
+
+      const localStream = this.state.localStream || new MediaStream();
+      if (!this.state.localStream) {
+        this.state.localStream = localStream;
+      }
+
+      const previousTrack = localStream.getVideoTracks()[0] || null;
+      const videoProducerEntry = this.#getLocalVideoProducer();
+
+      if (videoProducerEntry) {
+        await videoProducerEntry.producer.replaceTrack({ track: newTrack });
+        this.state.localProducers.delete(videoProducerEntry.trackId);
+        this.state.localProducers.set(newTrack.id, videoProducerEntry.producer);
+      } else if (this.state.sendTransport) {
+        try {
+          const producer = await this.state.sendTransport.produce({
+            track: newTrack,
+          });
+          this.state.localProducers.set(newTrack.id, producer);
+          producer.on("transportclose", () => {
+            this.state.localProducers.delete(newTrack.id);
+          });
+          producer.on("close", () => {
+            this.state.localProducers.delete(newTrack.id);
+          });
+        } catch (err) {
+          this.log(`Failed to produce switched video: ${err.message}`);
+          throw err;
+        }
+      }
+
+      if (previousTrack) {
+        this.state.localProducers.delete(previousTrack.id);
+        localStream.removeTrack(previousTrack);
+      }
+      localStream.addTrack(newTrack);
+      if (previousTrack && previousTrack !== newTrack) {
+        try {
+          previousTrack.stop();
+        } catch (_) {}
+      }
+
+      stream.getTracks().forEach((track) => {
+        if (track !== newTrack) {
+          try {
+            track.stop();
+          } catch (_) {}
+        }
+      });
+
+      const newSettings = newTrack.getSettings ? newTrack.getSettings() : null;
+      this.state.currentVideoDeviceId =
+        (newSettings && newSettings.deviceId) || deviceId;
+      this.#emitLocalStreamUpdate();
+      this.log(`Switched camera to ${deviceId}`);
+      await this.refreshDevices().catch(() => {});
+    } catch (err) {
+      if (stream) {
+        stream.getTracks().forEach((track) => {
+          try {
+            track.stop();
+          } catch (_) {}
+        });
+      }
+      throw err;
+    }
+  }
+
   async #consumeProducer(producerId) {
     if (!this.state.deviceLoaded) {
       if (!this.state.pendingRemoteProducers.includes(producerId)) {
@@ -404,11 +582,12 @@ export class SFUClient extends EventTarget {
     const playback = () => {
       const playPromise = detail.element.play?.();
       if (playPromise && typeof playPromise.catch === "function") {
-        playPromise.catch(() => {
+        playPromise.catch((err) => {
           this.log(
-            `Autoplay blocked for remote ${consumer.kind}; user gesture required.`
+            `Autoplay blocked for remote ${
+              consumer.kind
+            }; user gesture required (${err?.message || err})`
           );
-          detail.element.controls = true;
         });
       }
     };
@@ -573,6 +752,11 @@ export class SFUClient extends EventTarget {
     );
   }
 
+  #handleDeviceChange = () => {
+    if (!this.state.localStream) return;
+    this.refreshDevices().catch(() => {});
+  };
+
   #handleMessage = (event) => {
     let payload;
     try {
@@ -619,6 +803,9 @@ export class SFUClient extends EventTarget {
         this.#handleMemberJoined(payload);
         break;
       case "member-left":
+        this.#handleMemberLeft(payload);
+        break;
+      case "leave":
         this.#handleMemberLeft(payload);
         break;
       case "error":
@@ -692,6 +879,8 @@ export class SFUClient extends EventTarget {
     this.state.subscribedProducers.clear();
     this.state.pendingRemoteProducers = [];
     this.state.producerOwners.clear();
+    this.state.videoInputs = [];
+    this.state.currentVideoDeviceId = null;
     this.state.room = null;
     this.state.token = null;
     this.state.id = null;

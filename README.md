@@ -32,12 +32,26 @@ The install step compiles mediasoup; expect a few minutes on first run.
 
 1. **Start the signaling + SFU server**
 
-   ```bash
-   yarn start
-   ```
+Edit the `.env` file in the project root so that the SFU advertises a usable
+address and points at your local TURN service:
 
-   - WebSocket signaling: `ws://0.0.0.0:${PORT || 3000}`
-   - Admin HTTP API: `http://0.0.0.0:${ADMIN_PORT || PORT + 1}`
+```env
+PUBLIC_IP=192.168.99.166
+SFU_BIND_IP=192.168.99.166
+SFU_ANNOUNCED_IP=192.168.99.166
+ICE_SERVERS=[{"urls":["turn:192.168.99.166:3478"],"username":"local-user","credential":"local-pass"}]
+```
+
+Adjust the values if you need to expose the SFU to a different network.
+
+Start the server (dotenv is loaded automatically):
+
+```bash
+yarn start
+```
+
+- WebSocket signaling: `ws://0.0.0.0:${PORT || 3000}`
+- Admin HTTP API: `http://0.0.0.0:${ADMIN_PORT || PORT + 1}`
 
 2. **Serve the browser MVP**
 
@@ -60,17 +74,29 @@ The install step compiles mediasoup; expect a few minutes on first run.
 
 All settings are handled via environment variables:
 
-| Variable                                                   | Description                                        |
-| ---------------------------------------------------------- | -------------------------------------------------- |
-| `PORT`                                                     | WebSocket listener (default `3000`)                |
-| `ADMIN_PORT`                                               | Admin HTTP port (default `PORT + 1`)               |
-| `ENABLE_AUTH`                                              | Require tokens when set to `1`                     |
-| `ICE_SERVERS`                                              | JSON array passed to clients (overrides defaults)  |
-| `TURN_HOST`, `TURN_PORT`, `TURN_USERNAME`, `TURN_PASSWORD` | Convenience TURN builder                           |
-| `PUBLIC_IP`                                                | Public IP advertised in SFU listen IPs             |
-| `SFU_LISTEN_IPS`                                           | JSON array of `{ ip, announcedIp }` objects        |
-| `MAX_VIDEO_PER_ROOM`                                       | Limit video producers per room (default `2`)       |
-| `MAX_OBSERVERS`                                            | Limit observers per room (default `0` = unlimited) |
+| Variable                                                   | Description                                              |
+| ---------------------------------------------------------- | -------------------------------------------------------- |
+| `PORT`                                                     | WebSocket listener (default `3000`)                      |
+| `ADMIN_PORT`                                               | Admin HTTP port (default `PORT + 1`)                     |
+| `ENABLE_AUTH`                                              | Require tokens when set to `1`                           |
+| `ICE_SERVERS`                                              | JSON array passed to clients (overrides defaults)        |
+| `TURN_HOST`, `TURN_PORT`, `TURN_USERNAME`, `TURN_PASSWORD` | Convenience TURN builder                                 |
+| `PUBLIC_IP`                                                | Public IP advertised in SFU listen IPs                   |
+| `SFU_LISTEN_IPS`                                           | JSON array of `{ ip, announcedIp }` objects              |
+| `MAX_VIDEO_PER_ROOM`                                       | Limit video producers per room (default `0` = unlimited) |
+| `MAX_OBSERVERS`                                            | Limit observers per room (default `0` = unlimited)       |
+
+### Local loopback troubleshooting
+
+- Ensure `.env` contains `PUBLIC_IP=127.0.0.1` (or a concrete `SFU_LISTEN_IPS`
+  entry) before starting the server locally; otherwise the router
+  advertises `0.0.0.0` and Chrome/Firefox never complete DTLS.
+- `src/sfu.js` only exposes VP8 + Opus by default so that Chrome and Firefox can
+  mutually consume each other's streams. If you reintroduce H264, make sure all
+  participants support it or calls will fail silently.
+- `MAX_VIDEO_PER_ROOM=0` disables the room-wide cap (the default). If you set a
+  positive value, additional publishers beyond the limit are rejected and may
+  only produce audio.
 
 ## Admin API
 
@@ -85,6 +111,8 @@ All endpoints require an admin token (bearer header or `?token=...`).
 - `yarn start:dev` runs the server with nodemon for hot reloads.
 - `yarn start:withauth` and `yarn start:withoutauth` toggle auth enforcement.
 - UI tweaks live under `ui/` and are served by `scripts/ui-server.js`.
+- The React UI (`ui-react/`) surfaces a camera selector under the local preview, so
+  you can flip between attached cameras without restarting the call.
 
 ## License
 

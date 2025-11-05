@@ -1,3 +1,6 @@
+// Load environment variables from .env before reading configuration.
+require("dotenv").config();
+
 const DEFAULT_ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
 
 function parseJSONEnv(name) {
@@ -29,9 +32,9 @@ function getIceServers() {
 
 function getMaxVideoPerRoom() {
   const raw = process.env.MAX_VIDEO_PER_ROOM;
-  if (!raw) return 2;
+  if (!raw) return 0;
   const parsed = parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 2;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }
 
 function getRoomDefaults() {
@@ -47,8 +50,15 @@ function getRoomDefaults() {
 function getListenIps() {
   const parsed = parseJSONEnv("SFU_LISTEN_IPS");
   if (Array.isArray(parsed) && parsed.length) return parsed;
-  const announcedIp = process.env.PUBLIC_IP || undefined;
-  return [{ ip: "0.0.0.0", announcedIp }];
+  const bindIp = process.env.SFU_BIND_IP || "127.0.0.1";
+  let announcedIp = process.env.PUBLIC_IP || process.env.SFU_ANNOUNCED_IP;
+
+  if (!announcedIp) {
+    // For local development default to loopback which works for Chrome/Firefox
+    announcedIp = "127.0.0.1";
+  }
+
+  return [{ ip: bindIp, announcedIp }];
 }
 
 module.exports = {

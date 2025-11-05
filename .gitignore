@@ -1,3 +1,69 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Dependency directories
 node_modules/
+bower_components/
+
+# Coverage
+coverage
+*.lcov
+
+# Build outputs
+dist/
+/dist/
+/build/
+public/build/
+.next/
+.nuxt/
+out/
+.vscode-test/
+ui/dist/
+ui-react/dist/
+
+# Caches
+.npm
+.yarn
+.yarn-cache
+.pnpm-store
+.esbuild/
+.cache/
+.parcel-cache/
+rollup.cache
+tmp/
+temp/
+
+# Environment files
 .env
+.env.*
+
+# TypeScript
+.tsbuildinfo
+
+# IDE / Editor
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS-specific
 .DS_Store
+Thumbs.db

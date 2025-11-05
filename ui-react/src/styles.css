@@ -58,12 +58,20 @@ body {
   font-size: 0.9rem;
 }
 
-.controls input {
+.controls input,
+.controls select,
+.device-row select {
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid rgba(148, 163, 184, 0.4);
   background: rgba(15, 23, 42, 0.6);
   color: inherit;
+}
+
+.controls select,
+.device-row select {
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .button-row {
@@ -72,7 +80,8 @@ body {
   flex-wrap: wrap;
 }
 
-.button-row button {
+.button-row button,
+.device-row button {
   padding: 10px 16px;
   border-radius: 10px;
   border: none;
@@ -83,13 +92,29 @@ body {
   transition: transform 120ms ease, opacity 120ms ease;
 }
 
-.button-row button:hover {
+.button-row button:hover,
+.device-row button:hover {
   transform: translateY(-1px);
 }
 
-.button-row button:disabled {
+.button-row button:disabled,
+.device-row button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.device-row {
+  margin-top: 16px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.device-row label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
 }
 
 .video-tile {
