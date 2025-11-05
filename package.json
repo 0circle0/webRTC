@@ -1,0 +1,42 @@
+{
+  "name": "webrtc-server",
+  "version": "0.1.0",
+  "description": "A minimal WebRTC signaling server scaffold using WebSocket and Node.js (yarn)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "cross-env ENABLE_SFU=1 node src/index.js",
+    "start:dev": "cross-env ENABLE_SFU=1 nodemon src/index.js",
+    "start:withauth": "cross-env ENABLE_SFU=1 ENABLE_AUTH=1 node src/index.js",
+    "start:withoutauth": "cross-env ENABLE_SFU=1 ENABLE_AUTH=0 node src/index.js",
+    "start:sfu": "cross-env ENABLE_SFU=1 node src/index.js",
+    "build:ui": "node scripts/build-ui.js",
+    "ui": "yarn build:ui && node scripts/ui-server.js",
+    "ui-react:dev": "yarn --cwd ui-react dev",
+    "ui-react:build": "yarn --cwd ui-react build",
+    "ui-react:preview": "yarn --cwd ui-react preview"
+  },
+  "keywords": [
+    "webrtc",
+    "signaling",
+    "websocket",
+    "yarn",
+    "node"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14"
+  },
+  "dependencies": {
+    "mediasoup": "^3.14.10",
+    "mediasoup-client": "^3.6.85",
+    "uuid": "^9.0.0",
+    "ws": "^8.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12",
+    "jest": "^29.0.0",
+    "nodemon": "^2.0.0",
+    "cross-env": "^7.0.3"
+  }
+}
