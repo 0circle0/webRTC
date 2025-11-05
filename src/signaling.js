@@ -74,7 +74,7 @@ function createSignalingServer(wss, sfu) {
     if (roomObj.moderators.has(clientId)) roomObj.moderators.delete(clientId);
   }
 
-  const REQUIRE_AUTH = !!process.env.ENABLE_AUTH;
+  const REQUIRE_AUTH = process.env.ENABLE_AUTH == 1;
 
   if (sfu) {
     sfu.on("transport-closed", ({ clientId, transportId }) => {
