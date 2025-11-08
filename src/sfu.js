@@ -36,6 +36,8 @@ function createSFUServer(opts = {}) {
     closeConsumer: operations.closeConsumer,
     getRoomsOverview: operations.getRoomsOverview,
     getMetrics: operations.getMetrics,
+    startRecording: operations.startRecording,
+    stopRecording: operations.stopRecording,
     on: emitter.on.bind(emitter),
     off: emitter.off
       ? emitter.off.bind(emitter)

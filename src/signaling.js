@@ -45,6 +45,36 @@ function createSignalingServer(wss, sfu) {
         console.log(`raw from ${clientId}: <non-text>`);
       }
 
+      let msg;
+      try {
+        msg = JSON.parse(raw);
+      } catch (e) {
+        await routeMessage(clientId, ws, data);
+        return;
+      }
+
+      // Handle recording messages
+      if (msg && msg.type === "startRecording") {
+        // { roomName, producerId, recordingServer }
+        try {
+          const result = await sfu.startRecording(msg);
+          send(ws, { type: "recordingStarted", ...result });
+        } catch (err) {
+          send(ws, { type: "error", message: err.message });
+        }
+        return;
+      }
+      if (msg && msg.type === "stopRecording") {
+        // { transportId }
+        try {
+          const ok = await sfu.stopRecording(msg);
+          send(ws, { type: "recordingStopped", ok });
+        } catch (err) {
+          send(ws, { type: "error", message: err.message });
+        }
+        return;
+      }
+
       await routeMessage(clientId, ws, data);
     });
 
@@ -54,6 +84,8 @@ function createSignalingServer(wss, sfu) {
       if (sfu && sfu.closeClient) {
         try {
           sfu.closeClient(clientId);
+          // Stop any active recordings for this client
+          // TODO: Track and stop recordings per client if needed
         } catch (err) {
           console.warn("failed to close SFU state for client", err.message);
         }
