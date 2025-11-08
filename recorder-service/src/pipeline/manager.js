@@ -61,8 +61,6 @@ function startPipeline({ ip, rtpPort, codec, producerId, payloadType, ssrc }) {
       `udpsrc port=${rtpPort} caps="application/x-rtp, media=(string)video, encoding-name=(string)VP8, payload=${payloadType}${ssrcCaps}" ` +
       `! rtpjitterbuffer ` +
       `! rtpvp8depay ` +
-      `! vp8parse ` +
-      `! queue ` +
       `! webmmux streamable=true ` +
       `! filesink location=\"${outputFile}\"`;
     console.log(`[Pipeline Manager] GStreamer command: ${gstCmd}`);

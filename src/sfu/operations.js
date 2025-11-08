@@ -200,12 +200,14 @@ function createSfuOperations(context) {
       try {
         await recordingConsumer.resume();
         console.log("[SFU][recording] consumer resumed");
-        await recordingConsumer.requestKeyFrame().catch(() => {});
+        try {
+          await recordingConsumer.requestKeyFrame();
+        } catch {}
         console.log("[SFU][recording] keyframe requested");
       } catch (e) {
         console.error("[SFU][recording] resume/requestKeyFrame failed", e);
       }
-      // Do NOT stop immediately; only stop on real end
+      // Only stop when producer truly ends
       const stopRecording = async () => {
         console.log("[SFU][recording] stopping for", producer.id);
         try {
