@@ -59,6 +59,7 @@ function startPipeline({ ip, rtpPort, codec, producerId, payloadType, ssrc }) {
     gstCmd =
       `gst-launch-1.0 -e -v ` +
       `udpsrc port=${rtpPort} caps="application/x-rtp, media=(string)video, encoding-name=(string)VP8, payload=${payloadType}, clock-rate=90000, ssrc=${ssrc}" ` +
+      `! rtprtxdepay ` +
       `! rtpvp8depay ` +
       `! webmmux streamable=true ` +
       `! filesink location=\"${outputFile}\"`;
