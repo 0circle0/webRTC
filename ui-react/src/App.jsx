@@ -114,7 +114,7 @@ export default function App() {
 
   const defaultWs = useMemo(() => {
     const { hostname } = window.location;
-    return `ws://${hostname || "localhost"}:3000`;
+    return `ws://${hostname || "localhost"}:3100`;
   }, []);
 
   const [wsUrl, setWsUrl] = useState(defaultWs);
