@@ -58,8 +58,7 @@ function startPipeline({ ip, rtpPort, codec, producerId, payloadType, ssrc }) {
     console.log("[Pipeline Manager] Codec is video, using VP8 pipeline.");
     gstCmd =
       `gst-launch-1.0 -e -v ` +
-      `udpsrc port=${rtpPort} caps="application/x-rtp, media=(string)video, encoding-name=(string)VP8, payload=${payloadType}${ssrcCaps}" ` +
-      `! rtpjitterbuffer ` +
+      `udpsrc port=${rtpPort} caps="application/x-rtp, media=(string)video, encoding-name=(string)VP8, payload=${payloadType}, clock-rate=90000, ssrc=${ssrc}" ` +
       `! rtpvp8depay ` +
       `! webmmux streamable=true ` +
       `! filesink location=\"${outputFile}\"`;
